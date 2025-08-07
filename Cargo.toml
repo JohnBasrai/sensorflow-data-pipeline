@@ -1,0 +1,26 @@
+[package]
+name = "codemetal-sensorflow"
+version = "0.1.0"
+edition = "2021"
+authors = ["John Basrai <john@basrai.dev>"]
+description = "Backend service for the sensor flow pipeline"
+
+[dependencies]
+anyhow     = "1.0"
+axum       = "0.8"
+chrono     = { version = "0.4", features = ["serde"] }
+dotenvy    = "0.15"
+is-terminal= "0.4"
+reqwest    = { version = "0.12", features = ["json", "gzip", "brotli", "deflate", "rustls-tls"] }
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx       = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "macros", "uuid", "chrono"] }
+tokio      = { version = "1.37", default-features = false, features = ["macros", "rt-multi-thread"] }
+tracing    = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid       = { version = "1", features = ["serde", "v4"] }
+
+[dev-dependencies]
+# Test-only dependencies
+reqwest     = { version = "0.12", features = ["json", "rustls-tls"] }
+tokio-test  = "0.4"

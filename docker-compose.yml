@@ -1,0 +1,46 @@
+services:
+  # Sensor data backend service
+  sensorflow-be:
+    container_name: codemetal-sensorflow-backend
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      # Docker internal hostnames - different from .env values
+      - DATABASE_URL=postgres://cool_user:cool_pass@challenge-db:5432/cool_db
+      - SENSOR_API_URL=http://challenge-api:8080/sensor-data
+      - DB_POOL_MAX=5
+      - API_MAX_PAGES=100
+      - AXUM_LOG_LEVEL=info
+    depends_on:
+      - challenge-db
+      - challenge-api
+    restart: unless-stopped
+
+  # Mock sensor data API
+  challenge-api:
+    container_name: codemetal-challenge-api
+    build:
+      context: ./api
+    ports:
+      - "8081:8080"
+    env_file:
+      - .env
+
+  # PostgreSQL database
+  challenge-db:
+    image: postgres:15
+    container_name: codemetal-challenge-db
+    environment:
+      POSTGRES_USER: cool_user
+      POSTGRES_PASSWORD: cool_pass
+      POSTGRES_DB: cool_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
