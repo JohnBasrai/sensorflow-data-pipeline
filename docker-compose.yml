@@ -13,7 +13,10 @@ services:
       - SENSOR_API_URL=http://challenge-api:8080/sensor-data
       - DB_POOL_MAX=5
       - API_MAX_PAGES=100
-      - AXUM_LOG_LEVEL=info
+      - RUST_LOG=warn
+      - AXUM_LOG_LEVEL=debug
+      - AXUM_SPAN_EVENTS=enter_exit
+      - FORCE_COLOR=0
     depends_on:
       - challenge-db
       - challenge-api

@@ -218,9 +218,15 @@ async fn update_mesh_summaries(pool: &PgPool) -> Result<(), sqlx::Error> {
 /// Query parameters for filtering sensor readings
 #[derive(Debug, Deserialize)]
 pub struct ReadingsQuery {
+    // ---
+    #[serde(alias = "device", alias = "deviceId", alias = "deviceID")]
     device_id: Option<String>,
+
+    #[serde(alias = "mesh", alias = "meshId", alias = "meshID")]
     mesh_id: Option<String>,
+
     /// Timestamp range filter (e.g., "2025-03-21T00:00:00Z,2025-03-22T00:00:00Z")
+    #[serde(alias = "ts_range", alias = "timestampRange")]
     timestamp_range: Option<String>,
     limit: Option<u32>,
 }
