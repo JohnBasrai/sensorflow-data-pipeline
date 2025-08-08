@@ -1,4 +1,8 @@
-use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::get, Json, Router};
+use axum::{
+    extract::Query, extract::State, http::StatusCode, response::IntoResponse, routing::get, Json,
+    Router,
+};
+use serde::Deserialize;
 use sqlx::PgPool;
 use tracing::{debug, error, info};
 
@@ -11,11 +15,14 @@ pub fn router() -> Router<(PgPool, Config)> {
     Router::new().route("/sql/readings", get(handler))
 }
 
-async fn handler(State((pool, config)): State<(PgPool, Config)>) -> impl IntoResponse {
+async fn handler(
+    Query(params): Query<ReadingsQuery>,
+    State((pool, config)): State<(PgPool, Config)>,
+) -> impl IntoResponse {
     // ---
     info!("GET /sql/readings - Starting pipeline");
 
-    // Step 1: Fetch data from API (replace with actual API URL from docker-compose)
+    // Step 1: Fetch data from API
     debug!("GET /sql/readings - Step 1");
 
     let api_url = &config.api_url;
@@ -56,17 +63,19 @@ async fn handler(State((pool, config)): State<(PgPool, Config)>) -> impl IntoRes
         error!("Failed to update summaries: {}", e);
     }
 
-    // Step 4: Return transformed data
+    // Step 4: Apply filters and return data
+    let filtered_readings = apply_filters(transformed_readings, &params);
     info!(
         "Pipeline complete, returning {} readings",
-        transformed_readings.len()
+        filtered_readings.len()
     );
     debug!("GET /sql/readings - Returning OK");
-    (StatusCode::OK, Json(transformed_readings)).into_response()
+    (StatusCode::OK, Json(filtered_readings)).into_response()
 }
 
 // ---
 
+/// Fetch paginated sensor data from external API
 async fn fetch_sensor_data(
     base_url: &str,
     max_pages: u32,
@@ -179,6 +188,7 @@ async fn store_sensor_reading(pool: &PgPool, reading: &SensorReading) -> Result<
     Ok(())
 }
 
+/// Store a transformed sensor reading in the database
 async fn update_mesh_summaries(pool: &PgPool) -> Result<(), sqlx::Error> {
     // ---
     sqlx::query(
@@ -203,4 +213,40 @@ async fn update_mesh_summaries(pool: &PgPool) -> Result<(), sqlx::Error> {
     .await?;
 
     Ok(())
+}
+
+/// Query parameters for filtering sensor readings
+#[derive(Debug, Deserialize)]
+pub struct ReadingsQuery {
+    device_id: Option<String>,
+    mesh_id: Option<String>,
+    /// Timestamp range filter (e.g., "2025-03-21T00:00:00Z,2025-03-22T00:00:00Z")
+    timestamp_range: Option<String>,
+    limit: Option<u32>,
+}
+
+/// Apply query filters to sensor readings
+fn apply_filters(readings: Vec<SensorReading>, params: &ReadingsQuery) -> Vec<SensorReading> {
+    // ---
+    info!("Apply filter: {:?}", params);
+    readings
+        .into_iter()
+        .filter(|r| {
+            params
+                .device_id
+                .as_ref()
+                .map_or(true, |id| &r.device_id == id)
+        })
+        .filter(|r| params.mesh_id.as_ref().map_or(true, |id| &r.mesh_id == id))
+        .filter(|_r| {
+            if let Some(_range) = &params.timestamp_range {
+                // Parse "start,end" format and filter by timestamp_utc
+                // ... implementation
+                todo!()
+            } else {
+                true
+            }
+        })
+        .take(params.limit.unwrap_or(1000) as usize)
+        .collect()
 }

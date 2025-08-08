@@ -68,3 +68,24 @@ async fn readings_endpoint_transforms_ok() -> Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn filtering_works() -> Result<()> {
+    // ---
+    let base = std::env::var("BASE_URL").unwrap_or_else(|_| "http://localhost:8080".into());
+    let client = Client::new();
+
+    // Test device_id filter
+    let url = format!("{}/sql/readings?device_id=device-001&limit=10", base);
+    let readings: Vec<SensorReading> = client.get(&url).send().await?.json().await?;
+
+    // All returned readings should have the specified device_id
+    for reading in &readings {
+        assert_eq!(reading.device_id, "device-001", "Device filter failed");
+    }
+
+    // Test limit
+    assert!(readings.len() <= 10, "Limit filter failed");
+
+    Ok(())
+}
