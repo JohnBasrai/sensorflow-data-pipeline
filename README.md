@@ -29,7 +29,7 @@ Clone the repo and start the system using Docker:
 git clone https://github.com/JohnBasrai/codemetal-sensorflow.git
 cd codemetal-sensorflow
 docker-compose up --build -d
-````
+```
 
 This will:
 
@@ -39,16 +39,40 @@ This will:
 
 You can then query the transformed data via:
 
+## API
+
+### `GET /sql/readings`
+Returns sensor readings from Postgres (ingest-once; subsequent calls are fast).
+
+**Query params**
+- `device_id` (aliases: `device`, `deviceId`, `deviceID`)
+- `mesh_id`   (aliases: `mesh`, `meshId`, `meshID`)
+- `timestamp_range` — RFC3339 `"start,end"`; open ends allowed (`"start,"`, `",end"`).  
+  Returns **422** on invalid input.
+- `limit` — max rows to return (default: 1000)
+
+**Examples**
+
+```console
+export BASE=http://localhost:8080
+# by device
+$ curl "$BASE/sql/readings?device=device-001&limit=10"
+
+# by mesh
+$ curl "$BASE/sql/readings?mesh=mesh-001&limit=10"
+
+# by timestamp range (inclusive)
+$ curl "$BASE/sql/readings?timestamp_range=2025-03-21T00:00:00Z,2025-03-21T12:00:00Z"
+
+# Invalid timestamp_range → 422 with JSON error
+$ curl -i "$BASE/sql/readings?timestamp_range=not-a-timestamp"
+HTTP/1.1 422 Unprocessable Entity
+content-type: application/json
+content-length: 119
+date: Sat, 09 Aug 2025 00:03:53 GMT
+
+{"error":"invalid timestamp_range","hint":"use RFC3339 \"start,end\" (e.g. 2025-03-21T00:00:00Z,2025-03-22T00:00:00Z)"}
 ```
-GET /sql/readings
-```
-
-Supports optional filters like:
-
-* `device_id`
-* `mesh_id`
-* `timestamp_range`
-
 ---
 
 ## 📡 Input Dataset
@@ -161,7 +185,52 @@ const localTime = new Date(utcTimestamp).toLocaleString();
 
 ## Testing
 
-See [README-testing.md](README-testing.md)
+1. **Start the full environment:**
+```bash
+export BASE=http://localhost:8080
+docker compose up --build -d
+```
+
+2. **Run all tests:**
+```bash
+cargo test
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.14s
+     Running unittests src/main.rs (target/debug/deps/codemetal_sensorflow-1c0d3f5eab06e14c)
+
+running 9 tests
+test models::tests::data_preservation ... ok
+test models::tests::humidity_alerts ... ok
+test models::tests::temperature_conversion ... ok
+test models::tests::temperature_alerts ... ok
+test models::tests::utc_timestamp_preserved ... ok
+test routes::get_readings::tests::parses_full_range_and_trims ... ok
+test routes::get_readings::tests::parses_open_start ... ok
+test routes::get_readings::tests::rejects_missing_comma ... ok
+test routes::get_readings::tests::rejects_reversed_range ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/integration_test.rs (target/debug/deps/integration_test-779ce73942b9ca61)
+
+running 3 tests
+test filters_work_end_to_end ... ok
+test timestamp_range_bad_returns_422 ... ok
+test readings_endpoint_transforms_ok ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+# To run just integration tests (keeps unit output quiet)
+cargo test --test integration_test -- --nocapture
+
+# Tail backend logs during tests
+docker compose logs -f challenge-api
+
+# For versbose logging
+RUST_LOG=info,sqlx::query=warn docker compose up -d --build
+```
+
+Integration tests run sequentially to avoid overlapping the initial ingest on `/sql/readings`. 
+The first run ingests and caches data in Postgres; subsequent runs are fast (< 100ms).
 
 ## ⚠️ Security Advisory Note
 

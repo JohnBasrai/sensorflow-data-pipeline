@@ -2,9 +2,10 @@ use axum::{
     extract::Query, extract::State, http::StatusCode, response::IntoResponse, routing::get, Json,
     Router,
 };
-use serde::Deserialize;
-use sqlx::PgPool;
-use tracing::{debug, error, info};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use sqlx::{PgPool, Row};
+use tracing::{error, info};
 
 use crate::{Config, RawSensorReading, SensorReading};
 
@@ -19,57 +20,44 @@ async fn handler(
     Query(params): Query<ReadingsQuery>,
     State((pool, config)): State<(PgPool, Config)>,
 ) -> impl IntoResponse {
-    // ---
     info!("GET /sql/readings - Starting pipeline");
 
-    // Step 1: Fetch data from API
-    debug!("GET /sql/readings - Step 1");
+    // 0) Validate timestamp_range (422 on bad input)
+    if let Some(raw) = params.timestamp_range.as_deref() {
+        if parse_timestamp_range(raw).is_none() {
+            return (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(ApiError {
+                    error: "invalid timestamp_range",
+                    hint:  r#"use RFC3339 "start,end" (e.g. 2025-03-21T00:00:00Z,2025-03-22T00:00:00Z)"#,
+                }),
+            ).into_response();
+        }
+    }
 
     let api_url = &config.api_url;
     let api_max_pages = config.api_max_pages;
 
-    let raw_data = match fetch_sensor_data(api_url, api_max_pages).await {
-        Ok(data) => data,
+    // 1) Ingest once if empty
+    if let Err(e) = ensure_data_loaded(&pool, api_url, api_max_pages).await {
+        error!("Ingest failed: {}", e);
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json("ingest failed")).into_response();
+    }
+
+    // 2) Load from DB, then filter
+    let readings = match load_all_readings(&pool).await {
+        Ok(v) => v,
         Err(e) => {
-            error!("Failed to fetch sensor data: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json("Failed to fetch data"),
-            )
-                .into_response();
+            error!("Failed to load readings: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json("load failed")).into_response();
         }
     };
 
-    // Step 2: Transform and store
-    debug!("GET /sql/readings - Step 2");
-
-    let mut transformed_readings = Vec::new();
-    for raw in raw_data {
-        let transformed = raw.to_transformed();
-
-        // Store in sensor_data table
-        if let Err(e) = store_sensor_reading(&pool, &transformed).await {
-            error!("Failed to store reading: {}", e);
-            continue;
-        }
-
-        transformed_readings.push(transformed);
-    }
-
-    // Step 3: Update mesh summaries
-    debug!("GET /sql/readings - Step 3");
-
-    if let Err(e) = update_mesh_summaries(&pool).await {
-        error!("Failed to update summaries: {}", e);
-    }
-
-    // Step 4: Apply filters and return data
-    let filtered_readings = apply_filters(transformed_readings, &params);
+    let filtered_readings = apply_filters(readings, &params);
     info!(
         "Pipeline complete, returning {} readings",
         filtered_readings.len()
     );
-    debug!("GET /sql/readings - Returning OK");
     (StatusCode::OK, Json(filtered_readings)).into_response()
 }
 
@@ -231,10 +219,64 @@ pub struct ReadingsQuery {
     limit: Option<u32>,
 }
 
+/// Parse `"start,end"` (RFC3339) into UTC datetimes.
+/// Supports open ends (`"start,"`, `",end"`). Returns `None` on parse error or if `start > end`.
+fn parse_timestamp_range(s: &str) -> Option<(Option<DateTime<Utc>>, Option<DateTime<Utc>>)> {
+    // ---
+    // Expected timestamp syntax (RFC3339):
+    //   2025-03-21T00:00:00Z
+    //   2025-03-21T00:00:00+00:00
+    //   2025-03-21T00:00:00.123Z
+    //   2025-03-21T00:00:00-07:00
+    // Range forms (whitespace OK):
+    //   "start,end" | "start," | ",end"
+
+    let s = s.trim();
+    let (a, b) = s.split_once(',')?;
+    let parse = |t: &str| {
+        let t = t.trim();
+        if t.is_empty() {
+            tracing::trace!("Got empty range:{s}");
+            None
+        } else {
+            chrono::DateTime::parse_from_rfc3339(t)
+                .ok()
+                .map(|d| d.with_timezone(&Utc))
+        }
+    };
+    let start = parse(a);
+    let end = parse(b);
+    if let (Some(st), Some(en)) = (start, end) {
+        if st > en {
+            tracing::trace!("Start > End:{s}");
+            return None;
+        }
+    }
+    Some((start, end))
+}
+
+#[derive(Serialize)]
+struct ApiError {
+    error: &'static str,
+    hint: &'static str,
+}
+
 /// Apply query filters to sensor readings
 fn apply_filters(readings: Vec<SensorReading>, params: &ReadingsQuery) -> Vec<SensorReading> {
     // ---
     info!("Apply filter: {:?}", params);
+
+    // Parse once; reuse in the predicate (bad/None already handled in handler)
+    let parsed_range = params
+        .timestamp_range
+        .as_deref()
+        .and_then(parse_timestamp_range);
+
+    // For deterministic output, we can sort before .take(...)
+    // e.g., newest first
+    //     .sort_by_key(|r| r.timestamp_utc)
+    //     .reverse() // or change compare closure to reverse the sort.
+
     readings
         .into_iter()
         .filter(|r| {
@@ -244,15 +286,130 @@ fn apply_filters(readings: Vec<SensorReading>, params: &ReadingsQuery) -> Vec<Se
                 .map_or(true, |id| &r.device_id == id)
         })
         .filter(|r| params.mesh_id.as_ref().map_or(true, |id| &r.mesh_id == id))
-        .filter(|_r| {
-            if let Some(_range) = &params.timestamp_range {
-                // Parse "start,end" format and filter by timestamp_utc
-                // ... implementation
-                todo!()
-            } else {
-                true
+        .filter(|r| {
+            if let Some((ref start, ref end)) = parsed_range {
+                if let Some(st) = start {
+                    if r.timestamp_utc < *st {
+                        return false;
+                    }
+                }
+                if let Some(en) = end {
+                    if r.timestamp_utc > *en {
+                        return false;
+                    }
+                }
             }
+            true
         })
         .take(params.limit.unwrap_or(1000) as usize)
         .collect()
+}
+
+/// Ensure data exists: if `sensor_data` is empty, fetch from the API, transform,
+/// persist, and update summaries; otherwise no-op. Used to avoid re-ingesting on every GET.
+async fn ensure_data_loaded(
+    pool: &PgPool,
+    api_url: &str,
+    api_max_pages: u32,
+) -> Result<(), String> {
+    // --
+    // Skip ingest if we already have data
+
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM sensor_data")
+        .fetch_one(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if count > 0 {
+        tracing::debug!("Data present ({} rows); skipping ingest", count);
+        return Ok(());
+    }
+
+    tracing::info!("No data present; performing initial ingest");
+    let raw = fetch_sensor_data(api_url, api_max_pages)
+        .await
+        .map_err(|e| e.to_string())?;
+    for r in raw {
+        let t = r.to_transformed();
+        if let Err(e) = store_sensor_reading(pool, &t).await {
+            tracing::error!("store failed: {e}");
+        }
+    }
+    update_mesh_summaries(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Load all readings from `sensor_data` (no filters/pagination) into `SensorReading`.
+/// Used by the fast path after the initial ingest.
+async fn load_all_readings(pool: &PgPool) -> Result<Vec<SensorReading>, sqlx::Error> {
+    // ---
+    // If SensorReading implements `sqlx::FromRow`, you can do query_as::<_, SensorReading>(...)
+    // Using plain `Row` to avoid macros/derive coupling:
+
+    let rows = sqlx::query(
+        r#"
+        SELECT mesh_id, device_id, timestamp_utc,
+               temperature_c, temperature_f, humidity, status,
+               temperature_alert, humidity_alert
+        FROM sensor_data
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let readings = rows
+        .into_iter()
+        .map(|row| SensorReading {
+            mesh_id: row.get("mesh_id"),
+            device_id: row.get("device_id"),
+            timestamp_utc: row.get::<DateTime<Utc>, _>("timestamp_utc"),
+            temperature_c: row.get("temperature_c"),
+            temperature_f: row.get("temperature_f"),
+            humidity: row.get("humidity"),
+            status: row.get("status"),
+            temperature_alert: row.get("temperature_alert"),
+            humidity_alert: row.get("humidity_alert"),
+        })
+        .collect();
+
+    Ok(readings)
+}
+
+#[cfg(test)]
+mod tests {
+    // ---
+    use super::*;
+    use chrono::{TimeZone, Utc};
+
+    #[test]
+    fn parses_full_range_and_trims() {
+        // ---
+        let got = parse_timestamp_range(" 2025-03-21T00:00:00Z , 2025-03-21T01:00:00Z ");
+        let (s, e) = got.expect("should parse");
+        assert_eq!(s, Some(Utc.with_ymd_and_hms(2025, 3, 21, 0, 0, 0).unwrap()));
+        assert_eq!(e, Some(Utc.with_ymd_and_hms(2025, 3, 21, 1, 0, 0).unwrap()));
+    }
+
+    #[test]
+    fn parses_open_start() {
+        // ---
+        let got = parse_timestamp_range(",2025-03-22T00:00:00Z").expect("should parse");
+        assert!(got.0.is_none());
+        assert_eq!(
+            got.1,
+            Some(Utc.with_ymd_and_hms(2025, 3, 22, 0, 0, 0).unwrap())
+        );
+    }
+
+    #[test]
+    fn rejects_reversed_range() {
+        assert!(parse_timestamp_range("2025-03-22T00:00:00Z,2025-03-21T00:00:00Z").is_none());
+    }
+
+    #[test]
+    fn rejects_missing_comma() {
+        assert!(parse_timestamp_range("2025-03-21T00:00:00Z").is_none());
+    }
 }

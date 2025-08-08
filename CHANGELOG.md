@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0] - 2025-08-08
 
+### Performance
+- Ingest-once cache + DB fast path for `/sql/readings`; subsequent requests and test runs are sub-second.
+
+### Tests
+- Filter integration tests run sequentially to avoid overlapping the initial ingest.
+- Integration test asserts **422** for invalid `timestamp_range`.
+- Unit tests added for `parse_timestamp_range`.
+
 ### BREAKING
 - Remove `timestamp_est` from DB and API; **store UTC-only timestamps**. Clients must
   convert to local time on the frontend. (See README “Timezone Handling”.)

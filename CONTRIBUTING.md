@@ -1,4 +1,4 @@
-# Contributing to codmetal-sensorflow
+# Contributing to codemetal-sensorflow
 
 Thanks for considering contributing!
 
