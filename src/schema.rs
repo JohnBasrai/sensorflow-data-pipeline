@@ -26,7 +26,6 @@ pub async fn create_schema(pool: &PgPool) -> Result<()> {
             mesh_id           TEXT        NOT NULL,
             device_id         TEXT        NOT NULL,
             timestamp_utc     TIMESTAMPTZ NOT NULL,
-            timestamp_est     TIMESTAMPTZ NOT NULL,
             temperature_c     REAL        NOT NULL,
             temperature_f     REAL        NOT NULL,
             humidity          REAL        NOT NULL,

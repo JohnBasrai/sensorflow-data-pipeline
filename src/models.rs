@@ -23,8 +23,7 @@ pub struct SensorReading {
     // ---
     pub mesh_id: String,
     pub device_id: String,
-    pub timestamp_utc: DateTime<Utc>,
-    pub timestamp_est: DateTime<Utc>,
+    pub timestamp_utc: DateTime<Utc>, // Only store UTC timestamps
     pub temperature_c: f32,
     pub temperature_f: f32,
     pub humidity: f32,
@@ -39,13 +38,11 @@ impl RawSensorReading {
     pub fn to_transformed(&self) -> SensorReading {
         // ---
         let temperature_f = (self.temperature_c * 9.0 / 5.0) + 32.0;
-        let timestamp_est = self.timestamp - chrono::Duration::hours(5); // EST = UTC-5
 
         SensorReading {
             mesh_id: self.mesh_id.clone(),
             device_id: self.device_id.clone(),
-            timestamp_utc: self.timestamp,
-            timestamp_est,
+            timestamp_utc: self.timestamp, // Keep original UTC, UI will map it to local time
             temperature_c: self.temperature_c,
             temperature_f,
             humidity: self.humidity,
@@ -60,7 +57,7 @@ impl RawSensorReading {
 mod tests {
     // ---
     use super::*;
-    use chrono::{TimeZone, Timelike, Utc};
+    use chrono::{TimeZone, Utc};
 
     fn create_test_raw_reading(temp_c: f32, humidity: f32) -> RawSensorReading {
         // ---
@@ -75,7 +72,7 @@ mod tests {
     }
 
     #[test]
-    fn test_temperature_conversion() {
+    fn temperature_conversion() {
         // ---
         let raw = create_test_raw_reading(22.4, 50.0);
         let transformed = raw.to_transformed();
@@ -86,18 +83,26 @@ mod tests {
     }
 
     #[test]
-    fn test_timezone_conversion() {
+    fn utc_timestamp_preserved() {
         // ---
-        let raw = create_test_raw_reading(20.0, 50.0);
+        let original_utc = Utc.with_ymd_and_hms(2025, 3, 26, 18, 45, 0).unwrap();
+        let raw = RawSensorReading {
+            mesh_id: "mesh-001".to_string(),
+            device_id: "device-A".to_string(),
+            timestamp: original_utc,
+            temperature_c: 20.0,
+            humidity: 50.0,
+            status: "ok".to_string(),
+        };
+
         let transformed = raw.to_transformed();
 
-        // EST is UTC-5, so 18:45 UTC becomes 13:45 EST
-        assert_eq!(transformed.timestamp_utc.hour(), 18);
-        assert_eq!(transformed.timestamp_est.hour(), 13);
+        // UTC timestamp should be preserved exactly
+        assert_eq!(transformed.timestamp_utc, original_utc);
     }
 
     #[test]
-    fn test_temperature_alerts() {
+    fn temperature_alerts() {
         // ---
         // Normal temperature - no alert
         let normal = create_test_raw_reading(25.0, 50.0);
@@ -120,7 +125,7 @@ mod tests {
     }
 
     #[test]
-    fn test_humidity_alerts() {
+    fn humidity_alerts() {
         // ---
         // Normal humidity - no alert
         let normal = create_test_raw_reading(25.0, 50.0);
@@ -143,7 +148,7 @@ mod tests {
     }
 
     #[test]
-    fn test_data_preservation() {
+    fn data_preservation() {
         // ---
         let raw = RawSensorReading {
             mesh_id: "mesh-test".to_string(),

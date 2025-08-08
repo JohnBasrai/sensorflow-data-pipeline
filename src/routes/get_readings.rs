@@ -158,16 +158,15 @@ async fn store_sensor_reading(pool: &PgPool, reading: &SensorReading) -> Result<
     sqlx::query(
         r#"
         INSERT INTO sensor_data (
-            mesh_id, device_id, timestamp_utc, timestamp_est,
+            mesh_id, device_id, timestamp_utc,
             temperature_c, temperature_f, humidity, status,
             temperature_alert, humidity_alert
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         "#,
     )
     .bind(&reading.mesh_id)
     .bind(&reading.device_id)
     .bind(&reading.timestamp_utc)
-    .bind(&reading.timestamp_est)
     .bind(reading.temperature_c)
     .bind(reading.temperature_f)
     .bind(reading.humidity)

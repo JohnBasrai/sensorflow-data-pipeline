@@ -85,7 +85,7 @@ Example record:
 2. **Transform**
 
    * Add `temperature_f`
-   * Convert timestamps to EST and retain UTC
+   * Store timestamps in UTC (timezone conversion handled in frontend)
    * Flag anomalies:
 
      * `temperature_alert` if `< -10°C` or `> 60°C`
@@ -132,6 +132,30 @@ Example record:
 * PostgreSQL schema design and data integrity
 * Clean API design and filtering
 * Git hygiene and documentation
+
+---
+
+## 🏗️ Architecture Decisions
+
+### Timezone Handling
+
+**Original Requirement**: Convert timestamps from UTC to Eastern Standard Time (EST) and store both.
+
+**Implementation Decision**: Store only UTC timestamps and handle timezone conversion in the frontend.
+
+**Rationale**: 
+- **Scalability**: Hardcoding EST limits the system to Eastern timezone users
+- **Best Practice**: Industry standard is UTC storage with client-side conversion
+- **Maintainability**: Avoids complex DST handling and timezone edge cases in the backend
+- **Future-Proof**: Supports global users without backend changes
+
+**Frontend Integration**:
+```javascript
+// Client-side timezone conversion example
+const utcTimestamp = sensorData.timestamp_utc;
+const localTime = new Date(utcTimestamp).toLocaleString();
+// Automatically shows in user's local timezone
+```
 
 ---
 
