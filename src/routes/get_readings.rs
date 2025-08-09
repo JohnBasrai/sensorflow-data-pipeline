@@ -107,7 +107,7 @@ async fn fetch_sensor_data(
 
         // Build URL, use cursor if we have it
         let url = if let Some(ref cursor) = cursor {
-            format!("{}?cursor={}", base_url, cursor)
+            format!("{base_url}?cursor={cursor}")
         } else {
             base_url.to_string()
         };
@@ -195,7 +195,7 @@ async fn store_sensor_reading(pool: &PgPool, reading: &SensorReading) -> Result<
     )
     .bind(&reading.mesh_id)
     .bind(&reading.device_id)
-    .bind(&reading.timestamp_utc)
+    .bind(reading.timestamp_utc)
     .bind(reading.temperature_c)
     .bind(reading.humidity)
     .bind(&reading.status)
@@ -259,9 +259,12 @@ pub struct ReadingsQuery {
     limit: Option<u32>,
 }
 
+/// Type alias for timestamp range parsing result: (start, end) where each can be None for open ranges
+type TimestampRange = (Option<DateTime<Utc>>, Option<DateTime<Utc>>);
+
 /// Parse `"start,end"` (RFC3339) into UTC datetimes.
 /// Supports open ends (`"start,"`, `",end"`). Returns `None` on parse error or if `start > end`.
-fn parse_timestamp_range(s: &str) -> Option<(Option<DateTime<Utc>>, Option<DateTime<Utc>>)> {
+fn parse_timestamp_range(s: &str) -> Option<TimestampRange> {
     // ---
     // Expected timestamp syntax (RFC3339):
     //   2025-03-21T00:00:00Z
@@ -323,9 +326,9 @@ fn apply_filters(readings: Vec<SensorReading>, params: &ReadingsQuery) -> Vec<Se
             params
                 .device_id
                 .as_ref()
-                .map_or(true, |id| &r.device_id == id)
+                .is_none_or(|id| &r.device_id == id)
         })
-        .filter(|r| params.mesh_id.as_ref().map_or(true, |id| &r.mesh_id == id))
+        .filter(|r| params.mesh_id.as_ref().is_none_or(|id| &r.mesh_id == id))
         .filter(|r| {
             if let Some((ref start, ref end)) = parsed_range {
                 if let Some(st) = start {

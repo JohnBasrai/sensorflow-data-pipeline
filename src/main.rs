@@ -23,7 +23,6 @@ use std::{env, io::IsTerminal, net::SocketAddr};
 use axum::Router;
 use dotenvy::dotenv;
 use sqlx::postgres::PgPoolOptions;
-use tracing_subscriber;
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::fmt::format::FmtSpan;
 
@@ -122,7 +121,7 @@ fn init_tracing() {
             Some("error") => "error",
             _ => "debug",
         };
-        EnvFilter::new(format!("{},sqlx::query=warn", level))
+        EnvFilter::new(format!("{level},sqlx::query=warn"))
     };
 
     tracing_subscriber::fmt()

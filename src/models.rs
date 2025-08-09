@@ -43,7 +43,7 @@ pub struct RawSensorReading {
 /// - `temperature_alert` is true if `temperature_c` < -10.0 **or** > 60.0 (strict).
 /// - `humidity_alert`    is true if `humidity` < 10.0 **or** > 90.0 (strict).
 /// - `status` is copied from upstream; not interpreted here.
-/// Maps 1:1 to the `sensor_data` table and is safe to insert via `store_sensor_reading`.
+/// -  Maps 1:1 to the `sensor_data` table and is safe to insert via `store_sensor_reading`.
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct SensorReading {
     // ---
