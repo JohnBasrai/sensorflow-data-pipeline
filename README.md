@@ -108,7 +108,7 @@ Example record:
 
 2. **Transform**
 
-   * Add `temperature_f`
+   * Store temperature in `temperature_c` only
    * Store timestamps in UTC (timezone conversion handled in frontend)
    * Flag anomalies:
 
@@ -159,27 +159,46 @@ Example record:
 
 ---
 
-## 🏗️ Architecture Decisions
+## 🧭 Design decisions
 
-### Timezone Handling
+### Timezone handling (UTC-only)
+**Original requirement:** Store both UTC and EST.  
+**Decision:** Store **UTC only**; convert on the client.
 
-**Original Requirement**: Convert timestamps from UTC to Eastern Standard Time (EST) and store both.
+**Why:** avoids redundancy/DST bugs, follows industry practice, supports global users.
 
-**Implementation Decision**: Store only UTC timestamps and handle timezone conversion in the frontend.
-
-**Rationale**: 
-- **Scalability**: Hardcoding EST limits the system to Eastern timezone users
-- **Best Practice**: Industry standard is UTC storage with client-side conversion
-- **Maintainability**: Avoids complex DST handling and timezone edge cases in the backend
-- **Future-Proof**: Supports global users without backend changes
-
-**Frontend Integration**:
+**Frontend example**
 ```javascript
-// Client-side timezone conversion example
-const utcTimestamp = sensorData.timestamp_utc;
-const localTime = new Date(utcTimestamp).toLocaleString();
-// Automatically shows in user's local timezone
+const utc = sensor.timestamp_utc;               // e.g., "2025-03-21T00:00:00Z"
+const local = new Date(utc).toLocaleString();   // renders in user's local timezone
 ```
+
+### Temperature units (Celsius-only)
+
+**Original requirement:** Store `temperature_c` **and** `temperature_f`  
+**Decision:** Store/return **Celsius only**; clients convert to °F if needed.
+
+**Why:** storing both is redundant and can drift (same smell as UTC+EST).
+
+**Client conversion example**
+
+```javascript
+const c = sensor.temperature_c;
+const f = c * 9/5 + 32;
+```
+
+> If consumers want server-side conversions without duplicating state, we can add
+> presentation params (`?units=imperial`) or expose derived values via views/generated columns.
+
+### Ingest-once fast path
+
+`GET /sql/readings` ingests from upstream **only when the DB is empty**, then serves from Postgres.
+Subsequent calls/tests are sub-second (<150ms).
+
+### Validation & errors
+
+* `timestamp_range` must be RFC3339 `"start,end"` (open ends allowed: `"start,"`, `",end"`).
+* Invalid input returns **422** with JSON `{ "error", "hint" }`.
 
 ---
 
@@ -230,7 +249,7 @@ RUST_LOG=info,sqlx::query=warn docker compose up -d --build
 ```
 
 Integration tests run sequentially to avoid overlapping the initial ingest on `/sql/readings`. 
-The first run ingests and caches data in Postgres; subsequent runs are fast (< 100ms).
+The first run ingests and caches data in Postgres; subsequent runs are fast (< 150ms).
 
 ## ⚠️ Security Advisory Note
 

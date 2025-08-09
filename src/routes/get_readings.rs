@@ -16,10 +16,15 @@ pub fn router() -> Router<(PgPool, Config)> {
     Router::new().route("/sql/readings", get(handler))
 }
 
+/// Handle `GET /sql/readings`.
+/// Validates params (422 on bad `timestamp_range`), ingests once if the DB is empty,
+/// then loads from Postgres, applies filters (`device_id`, `mesh_id`, `timestamp_range`, `limit`),
+/// and returns the readings as JSON.
 async fn handler(
     Query(params): Query<ReadingsQuery>,
     State((pool, config)): State<(PgPool, Config)>,
 ) -> impl IntoResponse {
+    // ---
     info!("GET /sql/readings - Starting pipeline");
 
     // 0) Validate timestamp_range (422 on bad input)
@@ -63,18 +68,33 @@ async fn handler(
 
 // ---
 
-/// Fetch paginated sensor data from external API
+/// Fetch all pages from the upstream sensor API.
+///
+/// Starts at `base_url`, follows `next_cursor` until exhausted or `max_pages` reached,
+/// and returns the concatenated `RawSensorReading` list. Logs each page at `debug` level.
+///
+/// Notes:
+/// - Uses a new `reqwest::Client` per call (cheap). Consider reusing if hot-path.
+/// - Silently skips JSON items that fail to deserialize (logs at `debug`).
+/// - Stops early when `max_pages` is hit to protect the backend.
 async fn fetch_sensor_data(
     base_url: &str,
     max_pages: u32,
 ) -> Result<Vec<RawSensorReading>, Box<dyn std::error::Error>> {
     // ---
+
+    // New client per call; fine here, could reuse if calling this often.
     let client = reqwest::Client::new();
+
     let mut all_data = Vec::new();
     let mut cursor: Option<String> = None;
     let mut page_count = 0;
 
+    // https://use-the-index-luke.com/sql/partial-results/fetch-next-page
+
+    // keep fetching pages until max_pages or no more data
     loop {
+        // Guardrail: don’t hammer upstream forever.
         if page_count >= max_pages {
             tracing::debug!(
                 "Hit page limit of {}, stopping pagination. Fetched {} records so far.",
@@ -85,6 +105,7 @@ async fn fetch_sensor_data(
         }
         page_count += 1;
 
+        // Build URL, use cursor if we have it
         let url = if let Some(ref cursor) = cursor {
             format!("{}?cursor={}", base_url, cursor)
         } else {
@@ -93,16 +114,20 @@ async fn fetch_sensor_data(
 
         tracing::debug!("Fetching page {} from: {}", page_count, url);
 
+        // Fetch + parse the page payload as generic JSON.
         let response: serde_json::Value = client.get(&url).send().await?.json().await?;
 
         tracing::debug!("Page {} raw response: {}", page_count, response);
 
+        // Extract "results" array; skip page if missing/malformed.
         if let Some(data) = response.get("results").and_then(|d| d.as_array()) {
             tracing::debug!(
                 "Page {} found data array with {} items",
                 page_count,
                 data.len()
             );
+
+            // Deserialize each item; keep going on per-item errors.
             for (i, item) in data.iter().enumerate() {
                 match serde_json::from_value::<RawSensorReading>(item.clone()) {
                     Ok(reading) => {
@@ -126,6 +151,7 @@ async fn fetch_sensor_data(
             );
         }
 
+        // Advance pagination; stop when there is no next cursor.
         cursor = response
             .get("next_cursor")
             .and_then(|c| c.as_str())
@@ -150,22 +176,27 @@ async fn fetch_sensor_data(
     Ok(all_data)
 }
 
+/// Insert one normalized reading into `sensor_data`.
+///
+/// - Uses a parameterized `INSERT`
+/// - No string interpolation → safe from SQL injection; `sqlx` handles quoting & types.
+/// - Executes via the provided `PgPool`; returns `sqlx::Error` on constraint/type failures.
+/// - For bulk ingest, wrap calls in a single transaction or accept a generic `Executor`.
 async fn store_sensor_reading(pool: &PgPool, reading: &SensorReading) -> Result<(), sqlx::Error> {
     // ---
     sqlx::query(
         r#"
         INSERT INTO sensor_data (
             mesh_id, device_id, timestamp_utc,
-            temperature_c, temperature_f, humidity, status,
+            temperature_c, humidity, status,
             temperature_alert, humidity_alert
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         "#,
     )
     .bind(&reading.mesh_id)
     .bind(&reading.device_id)
     .bind(&reading.timestamp_utc)
     .bind(reading.temperature_c)
-    .bind(reading.temperature_f)
     .bind(reading.humidity)
     .bind(&reading.status)
     .bind(reading.temperature_alert)
@@ -176,26 +207,35 @@ async fn store_sensor_reading(pool: &PgPool, reading: &SensorReading) -> Result<
     Ok(())
 }
 
-/// Store a transformed sensor reading in the database
+/// Recompute per-mesh aggregates from `sensor_data` and upsert into `mesh_summary`.
+/// Aggregates all history (AVG temps/humidity, COUNT) and uses ON CONFLICT(mesh_id) to update.
 async fn update_mesh_summaries(pool: &PgPool) -> Result<(), sqlx::Error> {
     // ---
+
+    // Run one SQL that groups sensor_data by mesh_id and calculates:
+    //     - avg_temperature_c,
+    //     - avg_humidity
+    //     - reading_count
+    //
+    // Write into table mesh_summary using ON CONFLICT (mesh_id) DO UPDATE
+    // (so each mesh has one row that gets updated).
+    //
+    // Scope: aggregates all rows in sensor_data (no time window).
     sqlx::query(
         r#"
-        INSERT INTO mesh_summary (mesh_id, avg_temperature_c, avg_temperature_f, avg_humidity, reading_count)
+        INSERT INTO mesh_summary (mesh_id, avg_temperature_c, avg_humidity, reading_count)
         SELECT 
             mesh_id,
             AVG(temperature_c) as avg_temperature_c,
-            AVG(temperature_f) as avg_temperature_f,
             AVG(humidity) as avg_humidity,
             COUNT(*) as reading_count
         FROM sensor_data 
         GROUP BY mesh_id
         ON CONFLICT (mesh_id) DO UPDATE SET
             avg_temperature_c = EXCLUDED.avg_temperature_c,
-            avg_temperature_f = EXCLUDED.avg_temperature_f,
             avg_humidity = EXCLUDED.avg_humidity,
             reading_count = EXCLUDED.reading_count
-        "#
+        "#,
     )
     .execute(pool)
     .await?;
@@ -305,30 +345,34 @@ fn apply_filters(readings: Vec<SensorReading>, params: &ReadingsQuery) -> Vec<Se
         .collect()
 }
 
-/// Ensure data exists: if `sensor_data` is empty, fetch from the API, transform,
-/// persist, and update summaries; otherwise no-op. Used to avoid re-ingesting on every GET.
+/// Ensure data exists: if `sensor_data` is empty, fetch from the API,
+/// transform, persist, and update summaries; otherwise no-op. Used to avoid
+/// re-ingesting on every GET.
 async fn ensure_data_loaded(
     pool: &PgPool,
     api_url: &str,
     api_max_pages: u32,
 ) -> Result<(), String> {
-    // --
-    // Skip ingest if we already have data
+    // ---
 
-    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM sensor_data")
+    // Quick query of posgres then skip ingest if we already have data
+    let has_data: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM sensor_data)")
         .fetch_one(pool)
         .await
         .map_err(|e| e.to_string())?;
 
-    if count > 0 {
-        tracing::debug!("Data present ({} rows); skipping ingest", count);
+    if has_data {
+        tracing::debug!("Data present; skipping ingest");
         return Ok(());
     }
 
     tracing::info!("No data present; performing initial ingest");
+
+    // Expensive call to ingest data and store in DB
     let raw = fetch_sensor_data(api_url, api_max_pages)
         .await
         .map_err(|e| e.to_string())?;
+
     for r in raw {
         let t = r.to_transformed();
         if let Err(e) = store_sensor_reading(pool, &t).await {
@@ -351,8 +395,8 @@ async fn load_all_readings(pool: &PgPool) -> Result<Vec<SensorReading>, sqlx::Er
     let rows = sqlx::query(
         r#"
         SELECT mesh_id, device_id, timestamp_utc,
-               temperature_c, temperature_f, humidity, status,
-               temperature_alert, humidity_alert
+            temperature_c, humidity, status,
+            temperature_alert, humidity_alert
         FROM sensor_data
         "#,
     )
@@ -366,7 +410,6 @@ async fn load_all_readings(pool: &PgPool) -> Result<Vec<SensorReading>, sqlx::Er
             device_id: row.get("device_id"),
             timestamp_utc: row.get::<DateTime<Utc>, _>("timestamp_utc"),
             temperature_c: row.get("temperature_c"),
-            temperature_f: row.get("temperature_f"),
             humidity: row.get("humidity"),
             status: row.get("status"),
             temperature_alert: row.get("temperature_alert"),

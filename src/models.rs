@@ -5,30 +5,71 @@ use serde::{Deserialize, Serialize};
 
 // ---
 
-/// Raw sensor data from the API
+/// Raw reading as returned by the upstream API (wire format).
+///
+/// - Mirrors the JSON payload 1:1; no normalization or computed fields.
+/// - Use `to_transformed()` to produce a `SensorReading` suitable for storage:
+///   - normalizes `timestamp` to UTC
+///   - computes `temperature_f` from `temperature_c`
+///   - flags anomalies: `temperature_alert` (< -10°C or > 60°C),
+///     `humidity_alert` (< 10% or > 90%)
+/// - `status` is preserved verbatim from upstream; consumers may treat non-"ok" as an alert.
 #[derive(Debug, Deserialize)]
 pub struct RawSensorReading {
     // ---
+    /// Mesh the device belongs to (natural key from upstream)
     pub mesh_id: String,
+
+    /// Device identifier within the mesh (natural key from upstream)
     pub device_id: String,
+
+    /// Source timestamp (may include offset); not forced to UTC here.
     pub timestamp: DateTime<Utc>,
+
+    /// Temperature reported by upstream, in °C
     pub temperature_c: f32,
+
+    /// Relative humidity (%) reported by upstream
     pub humidity: f32,
+
+    /// Upstream status string (e.g., "ok"); passed through unchanged
     pub status: String,
 }
 
-/// Transformed sensor reading for the API response
+/// Normalized sensor reading used for storage and API responses.
+///
+/// Produced by `RawSensorReading::to_transformed()`. Invariants:
+/// - `timestamp_utc`     is normalized to UTC (`timestamptz` when stored).
+/// - `temperature_alert` is true if `temperature_c` < -10.0 **or** > 60.0 (strict).
+/// - `humidity_alert`    is true if `humidity` < 10.0 **or** > 90.0 (strict).
+/// - `status` is copied from upstream; not interpreted here.
+/// Maps 1:1 to the `sensor_data` table and is safe to insert via `store_sensor_reading`.
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct SensorReading {
     // ---
+    /// Natural key of the mesh (from upstream).
     pub mesh_id: String,
+
+    /// Device identifier within the mesh (from upstream).
     pub device_id: String,
-    pub timestamp_utc: DateTime<Utc>, // Only store UTC timestamps
+
+    /// Timestamp when the sensor captured this reading, normalized to UTC (not
+    /// ingest time).
+    pub timestamp_utc: chrono::DateTime<chrono::Utc>,
+
+    /// Temperature in °C as reported/normalized.
     pub temperature_c: f32,
-    pub temperature_f: f32,
+
+    /// Relative humidity in percent.
     pub humidity: f32,
+
+    /// Upstream status string (e.g., "ok"); preserved verbatim.
     pub status: String,
+
+    /// Temp anomaly flag: true if < -10°C or > 60°C.
     pub temperature_alert: bool,
+
+    /// Humidity anomaly flag: true if < 10% or > 90%.
     pub humidity_alert: bool,
 }
 
@@ -37,14 +78,12 @@ impl RawSensorReading {
     // ---
     pub fn to_transformed(&self) -> SensorReading {
         // ---
-        let temperature_f = (self.temperature_c * 9.0 / 5.0) + 32.0;
 
         SensorReading {
             mesh_id: self.mesh_id.clone(),
             device_id: self.device_id.clone(),
             timestamp_utc: self.timestamp, // Keep original UTC, UI will map it to local time
             temperature_c: self.temperature_c,
-            temperature_f,
             humidity: self.humidity,
             status: self.status.clone(),
             temperature_alert: self.temperature_c < -10.0 || self.temperature_c > 60.0,
@@ -69,17 +108,6 @@ mod tests {
             humidity,
             status: "ok".to_string(),
         }
-    }
-
-    #[test]
-    fn temperature_conversion() {
-        // ---
-        let raw = create_test_raw_reading(22.4, 50.0);
-        let transformed = raw.to_transformed();
-
-        // 22.4°C should be 72.32°F
-        assert_eq!(transformed.temperature_f, 72.32);
-        assert_eq!(transformed.temperature_c, 22.4);
     }
 
     #[test]
