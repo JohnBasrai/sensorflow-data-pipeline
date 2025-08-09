@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.3.2] - 2025-08-09
+
+### Documentation
+- Add .env setup step to README installation instructions
+- Add reference to Testing section in quick start guide
+
+---
+
 ## [0.3.1] - 2025-08-09
 
 ### Performance
