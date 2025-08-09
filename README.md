@@ -29,7 +29,10 @@ Clone the repo and start the system using Docker:
 ```bash
 git clone https://github.com/JohnBasrai/codemetal-sensorflow.git
 cd codemetal-sensorflow
+cp .env.example .env
+# make changes to localize if needed
 docker-compose up --build -d
+# See Testing for how to run the tests.
 ```
 
 **This will:**
