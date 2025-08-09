@@ -18,6 +18,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.0] - 2025-01-08
+
+### BREAKING CHANGES
+- **API Response Format**: Removed `temperature_f` field from `/sql/readings` endpoint
+- Clients should now convert temperature client-side: `const f = c * 9/5 + 32`
+
+### Changed
+- Store only Celsius temperatures (UTC-only approach)
+- Improved database schema efficiency
+- Updated documentation with client-side conversion examples
+
+### Removed
+- Removed `temperature_f` column from `sensor_data` table
+- Removed temperature conversion logic from backend
+- Updated integration tests to match new response format
+
+### Tests
+- Updated integration tests to match new response format
+
+---
+
 ## [0.2.0] - 2025-08-08
 
 ### Performance
@@ -71,6 +92,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/JohnBasrai/codemetal-sensorflow/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/JohnBasrai/codemetal-sensorflow/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/JohnBasrai/codemetal-sensorflow/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/JohnBasrai/codemetal-sensorflow/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/JohnBasrai/codemetal-sensorflow/releases/tag/v0.1.0

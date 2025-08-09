@@ -27,7 +27,6 @@ pub async fn create_schema(pool: &PgPool) -> Result<()> {
             device_id         TEXT        NOT NULL,
             timestamp_utc     TIMESTAMPTZ NOT NULL,
             temperature_c     REAL        NOT NULL,
-            temperature_f     REAL        NOT NULL,
             humidity          REAL        NOT NULL,
             status            TEXT,
             temperature_alert BOOLEAN,
@@ -39,12 +38,14 @@ pub async fn create_schema(pool: &PgPool) -> Result<()> {
     .await?;
 
     // Summary table for mesh aggregations
+    // `mesh_summary.mesh_id` is a natural key from upstream data (not generated here).
+    // We aggregate by `sensor_data.mesh_id` and upsert per mesh.
+
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS mesh_summary (
             mesh_id               TEXT PRIMARY KEY,
             avg_temperature_c     REAL NOT NULL,
-            avg_temperature_f     REAL NOT NULL,
             avg_humidity          REAL NOT NULL,
             reading_count         INTEGER NOT NULL
         );

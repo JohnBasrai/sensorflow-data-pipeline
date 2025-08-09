@@ -11,7 +11,6 @@ struct SensorReading {
     device_id: String,
     timestamp_utc: DateTime<Utc>,
     temperature_c: f32,
-    temperature_f: f32,
     humidity: f32,
     temperature_alert: bool,
     humidity_alert: bool,
@@ -38,22 +37,12 @@ async fn readings_endpoint_transforms_ok() -> Result<()> {
     for r in readings.iter().take(5) {
         // ---
 
-        // 0) Basic field validation (prevents unused field warnings)
+        // 1) Basic field validation (prevents unused field warnings)
         assert!(!r.mesh_id.is_empty(), "mesh_id should not be empty");
         assert!(!r.device_id.is_empty(), "device_id should not be empty");
         assert!(
             r.timestamp_utc > DateTime::from_timestamp(0, 0).unwrap(),
             "timestamp_utc should be valid"
-        );
-
-        // 1) Temperature conversion: °C → °F
-        let expected_f = (r.temperature_c * 9.0 / 5.0) + 32.0;
-        assert!(
-            (r.temperature_f - expected_f).abs() < 0.01,
-            "Temperature conversion failed: {}°C should be {:.2}°F, got {:.2}°F",
-            r.temperature_c,
-            expected_f,
-            r.temperature_f
         );
 
         // 2) Temperature alerts: < -10°C or > 60°C
