@@ -18,6 +18,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.1] - 2025-08-09
+
+### Performance
+- Move filtering from memory to database queries (~0.11s response time)
+- Add timestamp and composite indexes for better query performance
+
+### Added
+- Version logging at startup
+- Dynamic SQL query building for filtered requests
+
+### Removed
+- In-memory filtering after database load
+
+### Changed
+- Replace `load_all_readings` with `load_filtered_readings`
+- Improved logging config to reduce database noise
+
+---
+
 ## [0.3.0] - 2025-01-08
 
 ### BREAKING CHANGES

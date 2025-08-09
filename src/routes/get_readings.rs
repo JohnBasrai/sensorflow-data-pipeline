@@ -46,11 +46,12 @@ async fn handler(
     // 1) Ingest once if empty
     if let Err(e) = ensure_data_loaded(&pool, api_url, api_max_pages).await {
         error!("Ingest failed: {}", e);
+        // TODO: Production would distinguish upstream (502) vs internal (500) errors
         return (StatusCode::INTERNAL_SERVER_ERROR, Json("ingest failed")).into_response();
     }
 
-    // 2) Load from DB, then filter
-    let readings = match load_all_readings(&pool).await {
+    // 2) Load from DB with filters applied at database level
+    let readings = match load_filtered_readings(&pool, &params).await {
         Ok(v) => v,
         Err(e) => {
             error!("Failed to load readings: {}", e);
@@ -58,12 +59,8 @@ async fn handler(
         }
     };
 
-    let filtered_readings = apply_filters(readings, &params);
-    info!(
-        "Pipeline complete, returning {} readings",
-        filtered_readings.len()
-    );
-    (StatusCode::OK, Json(filtered_readings)).into_response()
+    info!("Pipeline complete, returning {} readings", readings.len());
+    (StatusCode::OK, Json(readings)).into_response()
 }
 
 // ---
@@ -304,50 +301,6 @@ struct ApiError {
     hint: &'static str,
 }
 
-/// Apply query filters to sensor readings
-fn apply_filters(readings: Vec<SensorReading>, params: &ReadingsQuery) -> Vec<SensorReading> {
-    // ---
-    info!("Apply filter: {:?}", params);
-
-    // Parse once; reuse in the predicate (bad/None already handled in handler)
-    let parsed_range = params
-        .timestamp_range
-        .as_deref()
-        .and_then(parse_timestamp_range);
-
-    // For deterministic output, we can sort before .take(...)
-    // e.g., newest first
-    //     .sort_by_key(|r| r.timestamp_utc)
-    //     .reverse() // or change compare closure to reverse the sort.
-
-    readings
-        .into_iter()
-        .filter(|r| {
-            params
-                .device_id
-                .as_ref()
-                .is_none_or(|id| &r.device_id == id)
-        })
-        .filter(|r| params.mesh_id.as_ref().is_none_or(|id| &r.mesh_id == id))
-        .filter(|r| {
-            if let Some((ref start, ref end)) = parsed_range {
-                if let Some(st) = start {
-                    if r.timestamp_utc < *st {
-                        return false;
-                    }
-                }
-                if let Some(en) = end {
-                    if r.timestamp_utc > *en {
-                        return false;
-                    }
-                }
-            }
-            true
-        })
-        .take(params.limit.unwrap_or(1000) as usize)
-        .collect()
-}
-
 /// Ensure data exists: if `sensor_data` is empty, fetch from the API,
 /// transform, persist, and update summaries; otherwise no-op. Used to avoid
 /// re-ingesting on every GET.
@@ -388,23 +341,69 @@ async fn ensure_data_loaded(
     Ok(())
 }
 
-/// Load all readings from `sensor_data` (no filters/pagination) into `SensorReading`.
-/// Used by the fast path after the initial ingest.
-async fn load_all_readings(pool: &PgPool) -> Result<Vec<SensorReading>, sqlx::Error> {
-    // ---
-    // If SensorReading implements `sqlx::FromRow`, you can do query_as::<_, SensorReading>(...)
-    // Using plain `Row` to avoid macros/derive coupling:
+/// Load filtered readings from `sensor_data` using database-level filtering.
+///
+/// Builds dynamic SQL queries with proper parameter binding. PostgreSQL automatically
+/// selects the optimal index based on query filters:
+///   - Single filters use corresponding single-column indexes
+///   - Combined filters prefer composite indexes when available
+///   - Results ordered by `timestamp_utc DESC` for deterministic output
+///   - `LIMIT` applied at database level for memory efficiency
+///
+/// Available indexes: `device_id`, `mesh_id`, `timestamp_utc`, and composites
+/// `(device_id, timestamp_utc)`, `(mesh_id, timestamp_utc)` for optimal performance.
+async fn load_filtered_readings(
+    pool: &PgPool,
+    params: &ReadingsQuery,
+) -> Result<Vec<SensorReading>, sqlx::Error> {
+    use sqlx::QueryBuilder;
 
-    let rows = sqlx::query(
+    let mut query = QueryBuilder::new(
         r#"
         SELECT mesh_id, device_id, timestamp_utc,
-            temperature_c, humidity, status,
-            temperature_alert, humidity_alert
+               temperature_c, humidity, status,
+               temperature_alert, humidity_alert
         FROM sensor_data
+        WHERE 1=1
         "#,
-    )
-    .fetch_all(pool)
-    .await?;
+    );
+
+    // Add device_id filter (uses index)
+    if let Some(device_id) = &params.device_id {
+        query.push(" AND device_id = ");
+        query.push_bind(device_id);
+    }
+
+    // Add mesh_id filter (uses index)
+    if let Some(mesh_id) = &params.mesh_id {
+        query.push(" AND mesh_id = ");
+        query.push_bind(mesh_id);
+    }
+
+    // Add timestamp range filter
+    if let Some(ts_range) = &params.timestamp_range {
+        if let Some((start, end)) = parse_timestamp_range(ts_range) {
+            if let Some(start_time) = start {
+                query.push(" AND timestamp_utc >= ");
+                query.push_bind(start_time);
+            }
+            if let Some(end_time) = end {
+                query.push(" AND timestamp_utc <= ");
+                query.push_bind(end_time);
+            }
+        }
+    }
+
+    // Add ORDER BY for deterministic results
+    query.push(" ORDER BY timestamp_utc DESC");
+
+    // Add LIMIT
+    let limit = params.limit.unwrap_or(1000);
+    query.push(" LIMIT ");
+    query.push_bind(limit as i64);
+
+    // Execute query and map results
+    let rows = query.build().fetch_all(pool).await?;
 
     let readings = rows
         .into_iter()

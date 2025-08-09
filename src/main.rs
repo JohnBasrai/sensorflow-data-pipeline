@@ -46,6 +46,14 @@ pub use models::{RawSensorReading, SensorReading};
 async fn main() -> Result<()> {
     // ---
     init_tracing();
+
+    tracing::info!(
+        "{} v{} - {}",
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+        env!("CARGO_PKG_DESCRIPTION")
+    );
+
     dotenv().ok();
 
     let cfg = config::load_from_env()?;

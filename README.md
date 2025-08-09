@@ -3,19 +3,20 @@ Modular sensor data pipeline in Rust: fetch, transform, analyze, store, and expo
 
 ## Summary
 
-`codemetal-sensorflow` is a modular, extensible data pipeline written in Rust for processing time-series sensor data. It fetches paginated data from a secured API, performs real-time transformations and anomaly detection, aggregates results by mesh ID, stores both raw and summarized data in PostgreSQL, and exposes a clean API for retrieval. Designed for testability, clarity, and production realism.
+`codemetal-sensorflow` is a modular, extensible data pipeline written in Rust for processing time-series sensor data. It fetches paginated data from a secured API, performs real-time transformations and anomaly detection, aggregates results by mesh ID, stores summarized data in PostgreSQL, and exposes a clean API for retrieval. Designed for testability, clarity, and production realism.
 
-> This project is a take-home assignment for CodeMetal.ai. It implements a realistic, end-to-end data pipeline in Rust to fetch, transform, analyze, and serve time-series sensor data from a secure API.
+> This project is a take-home assignment for [CodeMetal.ai](https://www.codemetal.ai/careers). It implements a realistic, end-to-end data pipeline in Rust to fetch, transform, analyze, and serve time-series sensor data from a secure API.
 
 ---
 
 ## 🔥 Features
 
 - Secure ingestion from a paginated API
-- Time zone and temperature unit conversions
+- UTC timestamp normalization (client-side timezone conversion)
 - Anomaly detection (temperature, humidity, device status)
 - Aggregation by `mesh_id`
-- PostgreSQL-backed storage for raw and summary data
+- PostgreSQL-backed storage for summary data
+- Strategic database indexing for sub-second query performance
 - REST API to serve transformed sensor data
 - Docker Compose for full environment setup
 
@@ -31,10 +32,10 @@ cd codemetal-sensorflow
 docker-compose up --build -d
 ```
 
-This will:
+**This will:**
 
 * Start the sensor data source API
-* Start PostgreSQL
+* Start PostgreSQL with optimized indexes for efficient filtering
 * Run the Rust backend to ingest, process, store, and expose transformed sensor data
 
 You can then query the transformed data via:
@@ -118,7 +119,7 @@ Example record:
 
 3. **Aggregate by `mesh_id`**
 
-   * Compute average temperature (C/F), average humidity, and count of readings
+   * Compute average temperature, average humidity, and count of readings
 
 4. **Store Summary**
 
@@ -193,12 +194,27 @@ const f = c * 9/5 + 32;
 ### Ingest-once fast path
 
 `GET /sql/readings` ingests from upstream **only when the DB is empty**, then serves from Postgres.
-Subsequent calls/tests are sub-second (<150ms).
+Subsequent calls/tests are sub-second `(~0.11s)`.
 
 ### Validation & errors
 
 * `timestamp_range` must be RFC3339 `"start,end"` (open ends allowed: `"start,"`, `",end"`).
 * Invalid input returns **422** with JSON `{ "error", "hint" }`.
+
+---
+
+## ⚡ Performance
+
+### Database Optimization
+- Targeted SQL queries with database-level filtering
+- Strategic indexing: single-column (`device_id`, `mesh_id`, `timestamp_utc`) and composite indexes
+- PostgreSQL query planner automatically selects optimal indexes
+- **Result**: ~0.11s response times for filtered queries
+
+### Caching Strategy  
+- Ingest-once pattern: data loaded on first request, cached in PostgreSQL
+- Subsequent API calls serve directly from database without re-ingestion
+- Memory-efficient: no in-memory filtering of large datasets
 
 ---
 
@@ -213,13 +229,12 @@ docker compose up --build -d
 2. **Run all tests:**
 ```bash
 cargo test
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.14s
-     Running unittests src/main.rs (target/debug/deps/codemetal_sensorflow-1c0d3f5eab06e14c)
+    Finished `release` profile [optimized] target(s) in 0.22s
+     Running unittests src/main.rs (target/release/deps/codemetal_sensorflow-ac928a43cce04ee7)
 
-running 9 tests
+running 8 tests
 test models::tests::data_preservation ... ok
 test models::tests::humidity_alerts ... ok
-test models::tests::temperature_conversion ... ok
 test models::tests::temperature_alerts ... ok
 test models::tests::utc_timestamp_preserved ... ok
 test routes::get_readings::tests::parses_full_range_and_trims ... ok
@@ -227,16 +242,16 @@ test routes::get_readings::tests::parses_open_start ... ok
 test routes::get_readings::tests::rejects_missing_comma ... ok
 test routes::get_readings::tests::rejects_reversed_range ... ok
 
-test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/integration_test.rs (target/debug/deps/integration_test-779ce73942b9ca61)
+     Running tests/integration_test.rs (target/release/deps/integration_test-135dda86e65697c6)
 
 running 3 tests
 test filters_work_end_to_end ... ok
 test timestamp_range_bad_returns_422 ... ok
 test readings_endpoint_transforms_ok ... ok
 
-test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
 
 # To run just integration tests (keeps unit output quiet)
 cargo test --test integration_test -- --nocapture
@@ -249,7 +264,7 @@ RUST_LOG=info,sqlx::query=warn docker compose up -d --build
 ```
 
 Integration tests run sequentially to avoid overlapping the initial ingest on `/sql/readings`. 
-The first run ingests and caches data in Postgres; subsequent runs are fast (< 150ms).
+The first run ingests and caches data in Postgres taking about `10s`; subsequent runs are fast `(~0.11s)`.
 
 ## ⚠️ Security Advisory Note
 

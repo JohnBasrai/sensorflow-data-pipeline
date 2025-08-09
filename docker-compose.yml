@@ -13,7 +13,8 @@ services:
       - SENSOR_API_URL=http://challenge-api:8080/sensor-data
       - DB_POOL_MAX=5
       - API_MAX_PAGES=100
-      - RUST_LOG=warn
+      # Filter out sqlx notices while keeping query warnings
+      - RUST_LOG=info,sqlx::query=warn,sqlx::postgres::notice=error
       - AXUM_LOG_LEVEL=debug
       - AXUM_SPAN_EVENTS=enter_exit
       - FORCE_COLOR=0

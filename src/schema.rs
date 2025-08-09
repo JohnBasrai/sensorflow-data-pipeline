@@ -11,7 +11,11 @@ use sqlx::PgPool;
 /// Create or update the database schema (idempotent).
 ///
 /// Creates the `sensor_data` table for transformed readings and `mesh_summary`
-/// table for aggregations. Safe to call on every startup; no-op if objects already exist.
+/// table for aggregations. Also creates indexes for query optimization:
+/// - Single-column indexes: `mesh_id`, `device_id`, `timestamp_utc`
+/// - Composite indexes: `(device_id, timestamp_utc)`, `(mesh_id, timestamp_utc)`
+///
+/// Safe to call on every startup; no-op if objects already exist.
 ///
 /// Errors are propagated if any SQL execution fails.
 pub async fn create_schema(pool: &PgPool) -> Result<()> {
@@ -38,9 +42,6 @@ pub async fn create_schema(pool: &PgPool) -> Result<()> {
     .await?;
 
     // Summary table for mesh aggregations
-    // `mesh_summary.mesh_id` is a natural key from upstream data (not generated here).
-    // We aggregate by `sensor_data.mesh_id` and upsert per mesh.
-
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS mesh_summary (
@@ -68,6 +69,35 @@ pub async fn create_schema(pool: &PgPool) -> Result<()> {
         r#"
         CREATE INDEX IF NOT EXISTS idx_sensor_data_device_id
             ON sensor_data (device_id);
+        "#,
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    // NEW: Timestamp index for range queries
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_sensor_data_timestamp_utc
+            ON sensor_data (timestamp_utc);
+        "#,
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    // NEW: Composite indexes for combined filtering
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_sensor_data_device_timestamp
+            ON sensor_data (device_id, timestamp_utc);
+        "#,
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_sensor_data_mesh_timestamp
+            ON sensor_data (mesh_id, timestamp_utc);
         "#,
     )
     .execute(&mut *tx)
