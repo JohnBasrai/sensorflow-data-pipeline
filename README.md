@@ -31,7 +31,7 @@ git clone https://github.com/JohnBasrai/codemetal-sensorflow.git
 cd codemetal-sensorflow
 cp .env.example .env
 # make changes to localize if needed
-docker-compose up --build -d
+docker compose up --build -d
 # See Testing for how to run the tests.
 ```
 
