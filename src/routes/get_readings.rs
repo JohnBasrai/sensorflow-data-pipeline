@@ -1,3 +1,39 @@
+//! Sensor readings API endpoint with database integration and filtering.
+//!
+//! This module provides the `GET /sql/readings` endpoint that:
+//!
+//! ## Core Functionality
+//! - **Auto-ingestion**: Automatically fetches and stores sensor data from upstream API if database is empty
+//! - **Efficient filtering**: Database-level filtering by device_id, mesh_id, and timestamp ranges
+//! - **Pagination**: Cursor-based pagination for upstream API consumption with configurable limits
+//! - **Data transformation**: Converts raw sensor readings to normalized format with alert flags
+//! - **Aggregate maintenance**: Updates mesh-level summary statistics after data ingestion
+//!
+//! ## Query Parameters
+//! - `device_id` (aliases: device, deviceId, deviceID) - Filter by specific device
+//! - `mesh_id` (aliases: mesh, meshId, meshID) - Filter by mesh network
+//! - `timestamp_range` (aliases: ts_range, timestampRange) - RFC3339 range "start,end" with open ends supported
+//! - `limit` - Maximum records to return (default: 1000)
+//!
+//! ## Database Schema
+//! Expects tables:
+//! - `sensor_data`: Main readings with indexes on device_id, mesh_id, timestamp_utc
+//! - `mesh_summary`: Aggregated statistics per mesh (avg temp/humidity, counts)
+//!
+//! ## Performance Notes
+//! - Uses composite indexes `(device_id, timestamp_utc)` and `(mesh_id, timestamp_utc)` for optimal filtering
+//! - SQL injection protection via parameterized queries and sqlx binding
+//! - Memory-efficient processing with database-level LIMIT application
+//! - Upstream API protection with configurable page limits
+//!
+//! ## Error Handling
+//! - 422 for malformed timestamp ranges
+//! - 500 for database/ingestion failures
+//! - Graceful handling of upstream API parsing errors (logs and continues)
+//!
+//! ## Future Improvements
+//! - TODO: Add cursor-based pagination for client responses
+//! - Consider connection pooling for frequent upstream API calls
 use axum::{
     extract::Query, extract::State, http::StatusCode, response::IntoResponse, routing::get, Json,
     Router,
@@ -87,8 +123,8 @@ async fn fetch_sensor_data(
     let mut cursor: Option<String> = None;
     let mut page_count = 0;
 
-    // https://use-the-index-luke.com/sql/partial-results/fetch-next-page
-
+    // https://www.postgresql.org/docs/current/queries-limit.html
+    // Above is interesting by we actually use CURSOR-BASED pagination pattern instead,
     // keep fetching pages until max_pages or no more data
     loop {
         // Guardrail: don’t hammer upstream forever.
@@ -230,8 +266,8 @@ async fn update_mesh_summaries(pool: &PgPool) -> Result<(), sqlx::Error> {
         GROUP BY mesh_id
         ON CONFLICT (mesh_id) DO UPDATE SET
             avg_temperature_c = EXCLUDED.avg_temperature_c,
-            avg_humidity = EXCLUDED.avg_humidity,
-            reading_count = EXCLUDED.reading_count
+            avg_humidity      = EXCLUDED.avg_humidity,
+            reading_count     = EXCLUDED.reading_count
         "#,
     )
     .execute(pool)
@@ -279,6 +315,8 @@ fn parse_timestamp_range(s: &str) -> Option<TimestampRange> {
             tracing::trace!("Got empty range:{s}");
             None
         } else {
+            // Parse RFC3339 timestamp and convert to UTC; .ok() discards parse errors
+            // since validation failure is handled by the parent function returning None
             chrono::DateTime::parse_from_rfc3339(t)
                 .ok()
                 .map(|d| d.with_timezone(&Utc))
@@ -352,6 +390,10 @@ async fn ensure_data_loaded(
 ///
 /// Available indexes: `device_id`, `mesh_id`, `timestamp_utc`, and composites
 /// `(device_id, timestamp_utc)`, `(mesh_id, timestamp_utc)` for optimal performance.
+///
+/// TODO: For production, this API should return a `next_cursor` field in the response
+/// to enable cursor-based pagination for downstream clients, following the same
+/// pattern we use when consuming the upstream sensor API.
 async fn load_filtered_readings(
     pool: &PgPool,
     params: &ReadingsQuery,

@@ -74,7 +74,7 @@ pub async fn create_schema(pool: &PgPool) -> Result<()> {
     .execute(&mut *tx)
     .await?;
 
-    // NEW: Timestamp index for range queries
+    // Timestamp index for range queries
     sqlx::query(
         r#"
         CREATE INDEX IF NOT EXISTS idx_sensor_data_timestamp_utc
@@ -84,7 +84,7 @@ pub async fn create_schema(pool: &PgPool) -> Result<()> {
     .execute(&mut *tx)
     .await?;
 
-    // NEW: Composite indexes for combined filtering
+    // Composite indexes for combined filtering
     sqlx::query(
         r#"
         CREATE INDEX IF NOT EXISTS idx_sensor_data_device_timestamp

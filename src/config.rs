@@ -4,6 +4,7 @@
 //! loading from environment variables (with optional `.env` file support
 //! provided by the caller). By consolidating configuration logic here, we
 //! avoid scattering `env::var` calls throughout the codebase, improving
+//! maintainability
 //!
 use std::env;
 
