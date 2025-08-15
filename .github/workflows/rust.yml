@@ -31,9 +31,11 @@ jobs:
 
       # Fast Cargo builds
       - name: Cache Cargo
+        id: cache-cargo
         uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+          prefix-key: ${{ runner.os }}-cargo
 
       - name: Prepare env
         run: |

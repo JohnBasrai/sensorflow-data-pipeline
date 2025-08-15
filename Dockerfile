@@ -3,10 +3,13 @@ FROM rust:1.88 as builder
 
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
-COPY src ./src
+COPY src/ ./src
+RUN cargo fetch --quiet
+COPY tests/ ./tests
+COPY api/ ./api
 
 # Build the application
-RUN cargo build --release --quiet
+RUN cargo build --quiet
 
 # Runtime stage
 FROM debian:bookworm-slim
@@ -19,7 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copy the binary from builder stage
-COPY --from=builder /app/target/release/codemetal-sensorflow ./
+COPY --from=builder /app/target/debug/codemetal-sensorflow ./
 
 EXPOSE 8080
 
