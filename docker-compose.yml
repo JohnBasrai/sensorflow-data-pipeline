@@ -7,6 +7,15 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
+    #
+    healthcheck:
+      test:
+        curl -f http://localhost:8080/health
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    #
     environment:
       # Docker internal hostnames - different from .env values
       - DATABASE_URL=postgres://cool_user:cool_pass@challenge-db:5432/cool_db
@@ -18,9 +27,12 @@ services:
       - AXUM_LOG_LEVEL=debug
       - AXUM_SPAN_EVENTS=enter_exit
       - FORCE_COLOR=0
+
     depends_on:
-      - challenge-db
-      - challenge-api
+      challenge-db:
+        condition: service_healthy
+      challenge-api:
+        condition: service_healthy
     restart: unless-stopped
 
   # Mock sensor data API
@@ -32,6 +44,13 @@ services:
       - "8081:8080"
     env_file:
       - .env
+    healthcheck:
+      test:
+        curl -f http://localhost:8080/health
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   # PostgreSQL database
   challenge-db:
@@ -45,6 +64,12 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB -h localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
 
 volumes:
   pgdata:

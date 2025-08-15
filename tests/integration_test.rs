@@ -3,7 +3,6 @@ use chrono::{DateTime, Utc};
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 use serde_json::Value;
-use serial_test::serial;
 
 #[derive(Debug, Deserialize)]
 struct SensorReading {
@@ -21,17 +20,16 @@ fn base_url() -> String {
 }
 
 #[tokio::test]
-#[serial]
 async fn readings_endpoint_transforms_ok() -> Result<()> {
     // ---
 
     let base = base_url();
-    let url = format!("{}/sql/readings?limit=50", base);
+    let url = format!("{base}/sql/readings?limit=50");
 
     let client = Client::new();
     let readings: Vec<SensorReading> = client.get(&url).send().await?.json().await?;
 
-    assert!(!readings.is_empty(), "No readings returned from {}", url);
+    assert!(!readings.is_empty(), "No readings returned from {url}");
 
     // Test the 3 core transformations on sample data
     for r in readings.iter().take(5) {
@@ -66,7 +64,6 @@ async fn readings_endpoint_transforms_ok() -> Result<()> {
 }
 
 #[tokio::test]
-#[serial]
 async fn filters_work_end_to_end() -> Result<()> {
     // ---
     let base = base_url();
@@ -82,7 +79,7 @@ async fn filters_work_end_to_end() -> Result<()> {
 async fn filter_by_device(client: &Client, base: &str) -> Result<()> {
     // ---
     let resp = client
-        .get(&format!("{}/sql/readings", base))
+        .get(format!("{base}/sql/readings"))
         .query(&[("device", "device-001"), ("limit", "10")])
         .send()
         .await?;
@@ -97,7 +94,7 @@ async fn filter_by_device(client: &Client, base: &str) -> Result<()> {
 async fn filter_by_mesh(client: &Client, base: &str) -> Result<()> {
     // ---
     let resp = client
-        .get(&format!("{}/sql/readings", base))
+        .get(format!("{base}/sql/readings"))
         .query(&[("mesh", "mesh-001"), ("limit", "10")])
         .send()
         .await?;
@@ -112,7 +109,7 @@ async fn filter_by_ts_range(client: &Client, base: &str) -> Result<()> {
     // ---
     // Anchor on a real ts
     let one: Vec<SensorReading> = client
-        .get(&format!("{}/sql/readings", base))
+        .get(format!("{base}/sql/readings"))
         .query(&[("limit", "1")])
         .send()
         .await?
@@ -124,7 +121,7 @@ async fn filter_by_ts_range(client: &Client, base: &str) -> Result<()> {
 
     // Happy path
     let ok = client
-        .get(&format!("{}/sql/readings", base))
+        .get(format!("{base}/sql/readings"))
         .query(&[("timestamp_range", range.as_str()), ("limit", "100")])
         .send()
         .await?;
@@ -134,7 +131,7 @@ async fn filter_by_ts_range(client: &Client, base: &str) -> Result<()> {
 
     // Bad input -> 422
     let bad = client
-        .get(&format!("{}/sql/readings", base))
+        .get(format!("{base}/sql/readings"))
         .query(&[("timestamp_range", "not-a-timestamp")])
         .send()
         .await?;
@@ -144,7 +141,6 @@ async fn filter_by_ts_range(client: &Client, base: &str) -> Result<()> {
 }
 
 #[tokio::test]
-#[serial]
 async fn timestamp_range_bad_returns_422() -> Result<(), Box<dyn std::error::Error>> {
     // ---
 
@@ -161,7 +157,7 @@ async fn timestamp_range_bad_returns_422() -> Result<(), Box<dyn std::error::Err
 
     for r in bad_ranges {
         let resp = client
-            .get(&format!("{}/sql/readings", base))
+            .get(format!("{base}/sql/readings"))
             .query(&[("timestamp_range", r)])
             .send()
             .await?;

@@ -3,13 +3,15 @@ use sqlx::PgPool;
 
 use crate::Config;
 
-mod get_readings;
+mod health;
+mod readings;
 
 // ---
 
 pub fn router(pool: PgPool, config: Config) -> Router {
     // ---
     Router::new()
-        .merge(get_readings::router())
+        .merge(readings::router())
+        .merge(health::router())
         .with_state((pool, config))
 }

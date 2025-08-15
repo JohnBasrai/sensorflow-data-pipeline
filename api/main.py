@@ -64,3 +64,11 @@ def get_sensor_data(request: Request, cursor: Optional[str] = Query(None)):
     next_cursor = base62_encode(end_index) if end_index < len(data) else None
 
     return {"results": results, "next_cursor": next_cursor}
+
+@app.get("/health")
+def health():
+    """
+    Lightweight health check endpoint.
+    Returns 200 OK with a simple status payload if the service is up.
+    """
+    return {"status": "ok"}
