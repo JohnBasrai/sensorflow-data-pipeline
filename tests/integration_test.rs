@@ -3,7 +3,6 @@ use chrono::{DateTime, Utc};
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 use serde_json::Value;
-use serial_test::serial;
 
 #[derive(Debug, Deserialize)]
 struct SensorReading {
@@ -21,7 +20,6 @@ fn base_url() -> String {
 }
 
 #[tokio::test]
-#[serial]
 async fn readings_endpoint_transforms_ok() -> Result<()> {
     // ---
 
@@ -66,7 +64,6 @@ async fn readings_endpoint_transforms_ok() -> Result<()> {
 }
 
 #[tokio::test]
-#[serial]
 async fn filters_work_end_to_end() -> Result<()> {
     // ---
     let base = base_url();
@@ -144,7 +141,6 @@ async fn filter_by_ts_range(client: &Client, base: &str) -> Result<()> {
 }
 
 #[tokio::test]
-#[serial]
 async fn timestamp_range_bad_returns_422() -> Result<(), Box<dyn std::error::Error>> {
     // ---
 

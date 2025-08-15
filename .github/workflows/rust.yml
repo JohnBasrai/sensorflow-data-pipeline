@@ -52,7 +52,7 @@ jobs:
       - name: Run tests
         env:
           BASE: http://localhost:8080
-        run: cargo test --all-features --locked --all-targets
+        run: cargo test --quiet --all-features --locked --all-targets
 
       - name: Show compose logs on failure
         if: failure()
