@@ -42,7 +42,7 @@ jobs:
       - name: Run Lint checks
         run: |
           cargo fmt --check 
-          cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings
+          cargo clippy --quiet --workspace --all-targets --all-features --no-deps -- -D warnings
 
       - name: Start services
         run: |
