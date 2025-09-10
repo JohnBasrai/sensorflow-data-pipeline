@@ -3,9 +3,10 @@ Modular sensor data pipeline in Rust: fetch, transform, analyze, store, and expo
 
 ## Summary
 
-`sensorflow-data-pipeline` is a modular, extensible data pipeline written in Rust for processing time-series sensor data. It fetches paginated data from a secured API, performs real-time transformations and anomaly detection, aggregates results by mesh ID, stores summarized data in PostgreSQL, and exposes a clean API for retrieval. Designed for testability, clarity, and production realism.
+`sensorflow-data-pipeline` is a portfolio-quality demo of a modular, end-to-end data pipeline written in Rust for processing time-series sensor data. It fetches data from a secure, paginated API, performs real-time transformations and anomaly detection, aggregates results by mesh ID, stores them in PostgreSQL, and serves the data via a RESTful API.
 
-> This project is a portfolio-quality demo of an end-to-end data pipeline built in Rust for processing time-series sensor data. It securely fetches data from a paginated API, performs real-time transformation and anomaly detection, aggregates results, and serves them through a RESTful API. Designed for clarity, testability, and production realism.  This version removes all prior references to external companies; the project is now presented as an independent, portfolio-quality demo.
+This project is designed to demonstrate production-realistic architecture, with a focus on clarity, testability, and performance. All prior company-specific references have been removed to present this as an independent, standalone project.
+
 
 ---
 
