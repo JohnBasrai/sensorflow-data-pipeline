@@ -1,6 +1,6 @@
 [package]
-name = "codemetal-sensorflow"
-version = "0.3.2"
+name = "sensorflow-data-pipeline"
+version = "0.4.0"
 edition = "2021"
 authors = ["John Basrai <john@basrai.dev>"]
 description = "Backend service for the sensor flow pipeline"

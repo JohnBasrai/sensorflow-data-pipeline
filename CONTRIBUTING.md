@@ -1,4 +1,4 @@
-# Contributing to codemetal-sensorflow
+# Contributing to sensorflow-data-pipeline
 
 Thanks for considering contributing!
 

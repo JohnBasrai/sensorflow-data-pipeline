@@ -5,7 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2025-09-10
+
+### Changed
+- Revised README to reflect independent, portfolio-driven purpose
+- Updated Cargo.toml metadata (`name`, `description`, `authors` unchanged; version bumped to 0.4.0)
+
+### Documentation
+ - Update design and evaluation goals
 
 ### Added
 - (placeholder)
@@ -119,7 +126,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/JohnBasrai/codemetal-sensorflow/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/JohnBasrai/codemetal-sensorflow/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/JohnBasrai/codemetal-sensorflow/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/JohnBasrai/codemetal-sensorflow/releases/tag/v0.1.0
+[Unreleased]: https://github.com/JohnBasrai/sensorflow-data-pipeline/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/JohnBasrai/sensorflow-data-pipeline/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/JohnBasrai/sensorflow-data-pipeline/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/JohnBasrai/sensorflow-data-pipeline/releases/tag/v0.1.0

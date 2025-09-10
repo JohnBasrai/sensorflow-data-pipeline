@@ -1,4 +1,4 @@
-//! Configuration loader for the `codemetal-sensorflow` backend service.
+//! Configuration loader for the `sensorflow-data-pipeline` backend service.
 //!
 //! This module centralizes all runtime configuration values and their defaults,
 //! loading from environment variables (with optional `.env` file support

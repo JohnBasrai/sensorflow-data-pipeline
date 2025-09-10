@@ -1,4 +1,4 @@
-//! Application entry point for the `codemetal-sensorflow` backend service.
+//! Application entry point for the `sensorflow-data-pipeline` backend service.
 //!
 //! This binary orchestrates the full startup sequence for the sensor data
 //! pipeline API, including:

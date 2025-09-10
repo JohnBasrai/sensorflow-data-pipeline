@@ -1,4 +1,4 @@
-//! Database schema management for `codemetal-sensorflow`.
+//! Database schema management for `sensorflow-data-pipeline`.
 //!
 //! Ensures required tables and indexes exist before serving requests.
 //! Applied once on startup from `main.rs` (EMBP: single gateway call).

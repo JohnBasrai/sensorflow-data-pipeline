@@ -300,24 +300,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codemetal-sensorflow"
-version = "0.3.2"
-dependencies = [
- "anyhow",
- "axum",
- "chrono",
- "dotenvy",
- "reqwest",
- "serde",
- "serde_json",
- "sqlx",
- "tokio",
- "tokio-test",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1821,6 +1803,24 @@ checksum = "49db231d56a190491cb4aeda9527f1ad45345af50b0851622a7adb8c03b01c32"
 dependencies = [
  "core-foundation-sys",
  "libc",
+]
+
+[[package]]
+name = "sensorflow-data-pipeline"
+version = "0.4.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "chrono",
+ "dotenvy",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

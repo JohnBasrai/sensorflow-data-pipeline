@@ -22,8 +22,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copy the binary from builder stage
-COPY --from=builder /app/target/debug/codemetal-sensorflow ./
+COPY --from=builder /app/target/debug/sensorflow-data-pipeline ./
 
 EXPOSE 8080
 
-CMD ["./codemetal-sensorflow"]
+CMD ["./sensorflow-data-pipeline"]

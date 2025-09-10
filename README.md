@@ -1,11 +1,11 @@
-# codemetal-sensorflow
+# sensorflow-data-pipeline
 Modular sensor data pipeline in Rust: fetch, transform, analyze, store, and expose via API
 
 ## Summary
 
-`codemetal-sensorflow` is a modular, extensible data pipeline written in Rust for processing time-series sensor data. It fetches paginated data from a secured API, performs real-time transformations and anomaly detection, aggregates results by mesh ID, stores summarized data in PostgreSQL, and exposes a clean API for retrieval. Designed for testability, clarity, and production realism.
+`sensorflow-data-pipeline` is a modular, extensible data pipeline written in Rust for processing time-series sensor data. It fetches paginated data from a secured API, performs real-time transformations and anomaly detection, aggregates results by mesh ID, stores summarized data in PostgreSQL, and exposes a clean API for retrieval. Designed for testability, clarity, and production realism.
 
-> This project is a take-home assignment for [CodeMetal.ai](https://www.codemetal.ai/careers). It implements a realistic, end-to-end data pipeline in Rust to fetch, transform, analyze, and serve time-series sensor data from a secure API.
+> This project is a portfolio-quality demo of an end-to-end data pipeline built in Rust for processing time-series sensor data. It securely fetches data from a paginated API, performs real-time transformation and anomaly detection, aggregates results, and serves them through a RESTful API. Designed for clarity, testability, and production realism.  This version removes all prior references to external companies; the project is now presented as an independent, portfolio-quality demo.
 
 ---
 
@@ -27,8 +27,8 @@ Modular sensor data pipeline in Rust: fetch, transform, analyze, store, and expo
 Clone the repo and start the system using Docker:
 
 ```bash
-git clone https://github.com/JohnBasrai/codemetal-sensorflow.git
-cd codemetal-sensorflow
+git clone https://github.com/JohnBasrai/sensorflow-data-pipeline.git
+cd sensorflow-data-pipeline
 cp .env.example .env
 # make changes to localize if needed
 docker compose up --build -d
@@ -152,7 +152,7 @@ Example record:
 
 ---
 
-## ✅ Evaluation Criteria (from CodeMetal.ai)
+## ✅ Design and Implementation Goals
 
 * Code correctness and clarity
 * Modular and testable architecture
@@ -233,7 +233,7 @@ docker compose up --build -d
 ```bash
 cargo test
     Finished `release` profile [optimized] target(s) in 0.22s
-     Running unittests src/main.rs (target/release/deps/codemetal_sensorflow-ac928a43cce04ee7)
+     Running unittests src/main.rs (target/release/deps/sensorflow-data-pipeline-ac928a43cce04ee7)
 
 running 8 tests
 test models::tests::data_preservation ... ok
@@ -260,7 +260,7 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 cargo test --test integration_test -- --nocapture
 
 # Tail backend logs during tests
-docker compose logs -f challenge-api
+docker compose logs -f sensor-api
 
 # For versbose logging
 RUST_LOG=info,sqlx::query=warn docker compose up -d --build
